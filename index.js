@@ -10,7 +10,7 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Serve static images
-app.use('/brand-images', express.static(path.join(__dirname, 'public/brand-images')));
+app.use('/brand-logos', express.static(path.join(__dirname, 'public/brands/brand-logos')));
 
 // Routes
 app.use('/api', uploadRoutes);
