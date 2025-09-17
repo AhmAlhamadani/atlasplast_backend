@@ -1,5 +1,6 @@
 import express from 'express';
 import Brand from '../models/Brand.js';
+import upload from '../middleware/multerConfig.js';
 
 const router = express.Router();
 
@@ -89,7 +90,7 @@ router.get('/:identifier', async (req, res) => {
   }
 });
 
-// POST create new brand
+// POST create new brand (JSON only)
 router.post('/', async (req, res) => {
   try {
     const brand = await Brand.create(req.body);
@@ -97,6 +98,65 @@ router.post('/', async (req, res) => {
     res.status(201).json({
       success: true,
       data: brand
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern)[0];
+      res.status(400).json({
+        success: false,
+        error: `${field} already exists`
+      });
+    } else if (error.name === 'ValidationError') {
+      const errors = Object.values(error.errors).map(err => err.message);
+      res.status(400).json({
+        success: false,
+        error: 'Validation failed',
+        details: errors
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+});
+
+// POST create new brand with image uploads
+router.post('/with-images', upload.fields([
+  { name: 'logo', maxCount: 1 },
+  { name: 'mainImage', maxCount: 1 },
+  { name: 'galleryImages', maxCount: 10 }
+]), async (req, res) => {
+  try {
+    const brandData = JSON.parse(req.body.brandData);
+    
+    // Process uploaded files
+    if (req.files) {
+      // Handle logo upload
+      if (req.files.logo && req.files.logo[0]) {
+        brandData.logo = `${req.protocol}://${req.get('host')}/brand-logos/${req.files.logo[0].filename}`;
+      }
+      
+      // Handle main image upload
+      if (req.files.mainImage && req.files.mainImage[0]) {
+        brandData.mainImage = `${req.protocol}://${req.get('host')}/brand-images/${req.files.mainImage[0].filename}`;
+      }
+      
+      // Handle gallery images upload
+      if (req.files.galleryImages && req.files.galleryImages.length > 0) {
+        brandData.galleryImages = req.files.galleryImages.map(file => 
+          `${req.protocol}://${req.get('host')}/brand-images/${file.filename}`
+        );
+      }
+    }
+    
+    const brand = await Brand.create(brandData);
+    
+    res.status(201).json({
+      success: true,
+      data: brand,
+      uploadedFiles: req.files ? Object.keys(req.files).length : 0
     });
   } catch (error) {
     if (error.code === 11000) {
@@ -207,6 +267,76 @@ router.patch('/:id', async (req, res) => {
   }
 });
 
+// PATCH update brand with image uploads
+router.patch('/:id/with-images', upload.fields([
+  { name: 'logo', maxCount: 1 },
+  { name: 'mainImage', maxCount: 1 },
+  { name: 'galleryImages', maxCount: 10 }
+]), async (req, res) => {
+  try {
+    const brandData = JSON.parse(req.body.brandData || '{}');
+    
+    // Process uploaded files
+    if (req.files) {
+      // Handle logo upload
+      if (req.files.logo && req.files.logo[0]) {
+        brandData.logo = `${req.protocol}://${req.get('host')}/brand-logos/${req.files.logo[0].filename}`;
+      }
+      
+      // Handle main image upload
+      if (req.files.mainImage && req.files.mainImage[0]) {
+        brandData.mainImage = `${req.protocol}://${req.get('host')}/brand-images/${req.files.mainImage[0].filename}`;
+      }
+      
+      // Handle gallery images upload
+      if (req.files.galleryImages && req.files.galleryImages.length > 0) {
+        brandData.galleryImages = req.files.galleryImages.map(file => 
+          `${req.protocol}://${req.get('host')}/brand-images/${file.filename}`
+        );
+      }
+    }
+    
+    const brand = await Brand.findByIdAndUpdate(
+      req.params.id,
+      { $set: brandData },
+      { new: true, runValidators: true }
+    );
+    
+    if (!brand) {
+      return res.status(404).json({
+        success: false,
+        error: 'Brand not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      data: brand,
+      uploadedFiles: req.files ? Object.keys(req.files).length : 0
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern)[0];
+      res.status(400).json({
+        success: false,
+        error: `${field} already exists`
+      });
+    } else if (error.name === 'ValidationError') {
+      const errors = Object.values(error.errors).map(err => err.message);
+      res.status(400).json({
+        success: false,
+        error: 'Validation failed',
+        details: errors
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+});
+
 // DELETE brand (soft delete)
 router.delete('/:id', async (req, res) => {
   try {
@@ -237,27 +367,27 @@ router.delete('/:id', async (req, res) => {
 });
 
 // HARD DELETE brand (permanent deletion)
-// router.delete('/:id/hard', async (req, res) => {
-//   try {
-//     const brand = await Brand.findByIdAndDelete(req.params.id);
+router.delete('/:id/hard', async (req, res) => {
+  try {
+    const brand = await Brand.findByIdAndDelete(req.params.id);
     
-//     if (!brand) {
-//       return res.status(404).json({
-//         success: false,
-//         error: 'Brand not found'
-//       });
-//     }
+    if (!brand) {
+      return res.status(404).json({
+        success: false,
+        error: 'Brand not found'
+      });
+    }
     
-//     res.json({
-//       success: true,
-//       message: 'Brand permanently deleted'
-//     });
-//   } catch (error) {
-//     res.status(500).json({
-//       success: false,
-//       error: error.message
-//     });
-//   }
-// });
+    res.json({
+      success: true,
+      message: 'Brand permanently deleted'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
 
 export default router;
